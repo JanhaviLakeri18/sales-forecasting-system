@@ -1,6 +1,10 @@
 from fastapi import FastAPI
 
-from fastapi.responses import FileResponse
+from fastapi.responses import (
+    FileResponse,
+    RedirectResponse
+)
+
 from fastapi.staticfiles import StaticFiles
 
 from src.data_preprocessing import load_data
@@ -40,9 +44,9 @@ app.mount(
 @app.get("/")
 def home():
 
-    return {
-        "message": "Sales Forecasting API Running"
-    }
+    return RedirectResponse(
+        url="/dashboard"
+    )
 
 
 # =========================================
@@ -58,90 +62,233 @@ def dashboard():
 
 
 # =========================================
+# API STATUS ROUTE
+# =========================================
+
+@app.get("/api")
+def api_status():
+
+    return {
+        "message":
+        "Sales Forecasting API Running"
+    }
+
+
+# =========================================
 # FORECAST ROUTE
 # =========================================
 
 @app.get("/forecast")
 def forecast(state: str):
 
-    # ==========================
-    # LOAD DATA
-    # ==========================
+    try:
 
-    df = load_data(
-        "data/sales_data.csv"
-    )
+        # ==========================
+        # LOAD DATA
+        # ==========================
 
-    # ==========================
-    # FILTER STATE
-    # ==========================
+        df = load_data(
+            "data/sales_data.csv"
+        )
 
-    df = df[
-        df['state'] == state
-    ]
+        # ==========================
+        # FILTER STATE
+        # ==========================
 
-    # ==========================
-    # FEATURE ENGINEERING
-    # ==========================
+        df = df[
+            df['state'] == state
+        ]
 
-    df = create_features(df)
+        # ==========================
+        # CHECK EMPTY DATA
+        # ==========================
 
-    # ==========================
-    # TRAIN MODELS
-    # ==========================
+        if df.empty:
 
-    results = []
+            return {
 
-    # ARIMA
-    arima_result = train_arima(df)
-    results.append(arima_result)
+                "error":
+                f"No data found for {state}"
+            }
 
-    # Prophet
-    prophet_result = train_prophet(df)
-    results.append(prophet_result)
+        # ==========================
+        # FEATURE ENGINEERING
+        # ==========================
 
-    # XGBoost
-    xgb_result = train_xgboost(df)
-    results.append(xgb_result)
+        df = create_features(df)
 
-    # LSTM
-    lstm_result = train_lstm(df)
-    results.append(lstm_result)
+        # ==========================
+        # TRAIN MODELS SAFELY
+        # ==========================
 
-    # ==========================
-    # SELECT BEST MODEL
-    # ==========================
+        results = []
 
-    best_model = select_best_model(results)
+        # ---------- ARIMA ----------
 
-    # ==========================
-    # GENERATE FORECAST
-    # ==========================
+        try:
 
-    forecast_values = forecast_future(
-        xgb_result['model'],
-        df,
-        steps=8
-    )
+            arima_result = train_arima(df)
 
-    # ==========================
-    # API RESPONSE
-    # ==========================
+            results.append(arima_result)
 
-    return {
+        except Exception as e:
 
-        "state":
-        state,
+            print(
+                "ARIMA ERROR:",
+                e
+            )
 
-        "best_model":
-        best_model['name'],
+        # ---------- PROPHET ----------
 
-        "mae":
-        round(best_model['mae'], 2),
+        try:
 
-        "rmse":
-        round(float(best_model['rmse']), 2),
+            prophet_result = train_prophet(df)
 
-        "8_week_forecast":
-        forecast_values
-    }
+            results.append(prophet_result)
+
+        except Exception as e:
+
+            print(
+                "PROPHET ERROR:",
+                e
+            )
+
+        # ---------- XGBOOST ----------
+
+        try:
+
+            xgb_result = train_xgboost(df)
+
+            results.append(xgb_result)
+
+        except Exception as e:
+
+            print(
+                "XGBOOST ERROR:",
+                e
+            )
+
+        # ---------- LSTM ----------
+
+        try:
+
+            lstm_result = train_lstm(df)
+
+            results.append(lstm_result)
+
+        except Exception as e:
+
+            print(
+                "LSTM ERROR:",
+                e
+            )
+
+        # ==========================
+        # CHECK RESULTS
+        # ==========================
+
+        if len(results) == 0:
+
+            return {
+
+                "error":
+                "All models failed"
+            }
+
+        # ==========================
+        # SELECT BEST MODEL
+        # ==========================
+
+        best_model = select_best_model(
+            results
+        )
+
+        # ==========================
+        # FORECAST VALUES
+        # ==========================
+
+        forecast_values = []
+
+        # XGBoost forecast
+        if best_model['name'] == 'XGBoost':
+
+            forecast_values = forecast_future(
+
+                xgb_result['model'],
+
+                df,
+
+                steps=8
+            )
+
+        # ARIMA forecast
+        elif best_model['name'] == 'ARIMA':
+
+            forecast_values = best_model.get(
+                'forecast',
+                [0] * 8
+            )
+
+        # Prophet forecast
+        elif best_model['name'] == 'Prophet':
+
+            forecast_values = best_model.get(
+                'forecast',
+                [0] * 8
+            )
+
+        # LSTM forecast
+        elif best_model['name'] == 'LSTM':
+
+            forecast_values = best_model.get(
+                'forecast',
+                [0] * 8
+            )
+
+        # ==========================
+        # API RESPONSE
+        # ==========================
+
+        return {
+
+            "state":
+            state,
+
+            "best_model":
+            best_model['name'],
+
+            "mae":
+            round(
+                float(best_model['mae']),
+                2
+            ),
+
+            "rmse":
+            round(
+                float(best_model['rmse']),
+                2
+            ),
+
+            "8_week_forecast": [
+
+                round(
+                    float(value),
+                    2
+                )
+
+                for value in forecast_values
+            ]
+        }
+
+    except Exception as e:
+
+        print(
+            "FORECAST ROUTE ERROR:",
+            e
+        )
+
+        return {
+
+            "error":
+            str(e)
+        }
