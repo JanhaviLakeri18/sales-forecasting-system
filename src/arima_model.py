@@ -23,7 +23,7 @@ def train_arima(df):
 
                 'model': None,
 
-                'forecast': [0] * 8,
+                'forecast': [100] * 8,
 
                 'mae': 999999999,
 
@@ -43,14 +43,15 @@ def train_arima(df):
         test = sales[train_size:]
 
         # =========================
-        # ARIMA MODEL
+        # SAFER ARIMA MODEL
         # =========================
 
         model = ARIMA(
 
             train,
 
-            order=(5, 1, 0)
+            order=(1, 1, 1)
+
         )
 
         model_fit = model.fit()
@@ -62,6 +63,7 @@ def train_arima(df):
         predictions = model_fit.forecast(
 
             steps=len(test)
+
         )
 
         # =========================
@@ -71,7 +73,20 @@ def train_arima(df):
         future_forecast = model_fit.forecast(
 
             steps=8
+
         )
+
+        # =========================
+        # FIX NEGATIVE / INVALID VALUES
+        # =========================
+
+        future_forecast = [
+
+            max(0, float(x))
+
+            for x in future_forecast
+
+        ]
 
         # =========================
         # METRICS
@@ -82,11 +97,13 @@ def train_arima(df):
             test,
 
             predictions
+
         )
 
         rmse = np.sqrt(
 
             ((test - predictions) ** 2).mean()
+
         )
 
         print("\nARIMA Results")
@@ -103,7 +120,7 @@ def train_arima(df):
 
             'model': model_fit,
 
-            'forecast': future_forecast.tolist(),
+            'forecast': future_forecast,
 
             'mae': float(mae),
 
@@ -120,7 +137,7 @@ def train_arima(df):
 
             'model': None,
 
-            'forecast': [0] * 8,
+            'forecast': [100] * 8,
 
             'mae': 999999999,
 
