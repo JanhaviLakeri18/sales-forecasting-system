@@ -1,8 +1,8 @@
 # Sales Forecasting System
 ## Screenshots
 
-### Home Page
-![Home Page](homepage.png)
+### Dashboard
+![Dashboard](homepage.png)
 
 ### Result Page
 ![Resultpage1](resultpage1.png)
